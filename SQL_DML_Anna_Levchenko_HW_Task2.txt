@@ -1,0 +1,31 @@
+1) Creation of table: Query returned successfully in 34 secs 353 msec.
+2) Initial Space Consumption (After Creation): 575 MB
+3) DELETE Operation Duration: Query returned successfully in 21 secs 892 msec.
+   After DELETE Operation (Without VACUUM): 575 MB (no immediate reduction in disk space)
+   VACUUM FULL Duration: Query returned successfully in 8 secs 674 msec.
+   After DELETE Operation + VACUUM FULL: 383 MB
+4) TRUNCATE Operation Duration: Query returned successfully in 155 msec.
+   After TRUNCATE Operation: 0 bytes
+
+Analysis and Conclusions
+
+DELETE vs. TRUNCATE:
+
+- DELETE removed rows but did not immediately reduce disk space usage due to PostgreSQL’s MVCC, 
+which keeps old row versions until a VACUUM is run. The VACUUM FULL operation then reclaims the space 
+by physically removing the old versions of the deleted rows.
+- TRUNCATE, on the other hand, removes all rows and instantly frees up disk space, showing 0 bytes in 
+space consumption right after execution.
+
+Performance:
+
+-DELETE Operation took significantly longer (21.892 seconds) compared to TRUNCATE (0.155 seconds). 
+DELETE operations can be slower since they must adhere to row-level locks and transaction safety, 
+whereas TRUNCATE is much faster as it doesn’t log individual row deletions.
+
+Space Management and Optimization:
+
+-The VACUUM FULL operation is crucial after DELETE statements for tables where frequent deletions occur, 
+as it reclaims space by reorganizing the table and reducing bloat.
+-TRUNCATE is the preferred method for quickly clearing out an entire table, both in terms of performance 
+and space reclamation, as it bypasses row-level checks and reduces the table size immediately.

@@ -8,7 +8,7 @@ FROM (VALUES
     ('Spotlight', 'Sacha Pfeiffer interview victims and try to unseal sensitive documents.', 2001, 14, 9.99, 142, 19.99, 'R'::dvdrental.mpaa_rating, ARRAY['Commentaries']::text[]),
     ('Little Women', 'Amy has a chance encounter with Theodore...', 2019, 21, 19.99, 175, 19.99, 'R'::dvdrental.mpaa_rating, ARRAY['Deleted Scenes']::text[])
 ) AS movie (title, description, release_year, rental_duration, rental_rate, length, replacement_cost, rating, special_features)
-JOIN dvdrental.language lang ON lang.name = 'English'
+JOIN dvdrental.language lang ON lang.name = LOWER('English')
 WHERE NOT EXISTS (SELECT 1 FROM dvdrental.film f WHERE LOWER(f.title) = LOWER(movie.title))
 RETURNING film_id;
 
@@ -66,8 +66,13 @@ SELECT f.film_id, store.store_id, CURRENT_DATE
 FROM dvdrental.film f
 JOIN (VALUES ('Coco'), ('Spotlight'), ('Little Women')) AS movies(title) 
     ON LOWER(f.title) = LOWER(movies.title)
-JOIN dvdrental.store store 
-    ON store.store_id = 1 
+JOIN (
+    SELECT store_id
+    FROM dvdrental.store
+    ORDER BY RANDOM()  -- Randomly order the stores
+    LIMIT 1  -- Select only one store at random
+) AS store
+ON TRUE  -- Join to ensure the random store is used
 WHERE NOT EXISTS (
     SELECT 1 
     FROM dvdrental.inventory i

@@ -16,7 +16,6 @@ WITH ActorGaps AS (
     -- Group by actor ID for uniqueness
     GROUP BY a.actor_id
 )
-
 SELECT 
     actor_id, 
     actor_name, 

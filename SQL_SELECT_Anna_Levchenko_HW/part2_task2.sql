@@ -16,5 +16,5 @@ FROM public.rental AS r  -- Added schema prefix
 INNER JOIN public.inventory AS i ON r.inventory_id = i.inventory_id  -- Link rentals with inventory
 INNER JOIN public.film AS f ON i.film_id = f.film_id  -- Get movie details such as title and rating
 GROUP BY f.film_id, f.title, f.rating  -- Group by film ID to count rentals for each film
-ORDER BY rental_count DESC  -- Sort by rental count in descending order to get the most rented films
+ORDER BY rental_count DESC, f.title ASC  -- Sort by rental count in descending order to get the most rented films
 LIMIT 5;  -- Limit the result to the top 5 most rented movies

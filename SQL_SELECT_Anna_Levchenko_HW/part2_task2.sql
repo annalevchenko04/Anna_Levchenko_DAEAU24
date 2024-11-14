@@ -5,11 +5,11 @@ SELECT
     f.rating,  -- Movie rating
     -- Determine expected audience age based on the rating system
     CASE 
-        WHEN f.rating = 'G' THEN 'All ages'
-        WHEN f.rating = 'PG' THEN ' Parental guidance suggested: Some material may not be suitable for children.'
-        WHEN f.rating = 'PG-13' THEN 'Parents strongly cautioned, suitable for ages 13 and up'
-        WHEN f.rating = 'R' THEN 'Restricted, suitable for ages 17 and up'
-        WHEN f.rating = 'NC-17' THEN 'Adults only, suitable for ages 18 and up'
+        WHEN LOWER(f.rating) = LOWER('G') THEN 'All ages'
+        WHEN LOWER(f.rating) = LOWER('PG') THEN ' Parental guidance suggested: Some material may not be suitable for children.'
+        WHEN LOWER(f.rating) = LOWER('PG-13') THEN 'Parents strongly cautioned, suitable for ages 13 and up'
+        WHEN LOWER(f.rating) = LOWER('R') THEN 'Restricted, suitable for ages 17 and up'
+        WHEN LOWER(f.rating) = LOWER('NC-17') THEN 'Adults only, suitable for ages 18 and up'
         ELSE 'Unknown age rating'  -- In case there are unrated films
     END AS expected_age
 FROM public.rental AS r  -- Added schema prefix

@@ -8,7 +8,7 @@ FROM (VALUES
     ('Spotlight', 'Sacha Pfeiffer interview victims and try to unseal sensitive documents.', 2001, 14, 9.99, 142, 19.99, 'R'::dvdrental.mpaa_rating, ARRAY['Commentaries']::text[]),
     ('Little Women', 'Amy has a chance encounter with Theodore...', 2019, 21, 19.99, 175, 19.99, 'R'::dvdrental.mpaa_rating, ARRAY['Deleted Scenes']::text[])
 ) AS movie (title, description, release_year, rental_duration, rental_rate, length, replacement_cost, rating, special_features)
-JOIN dvdrental.language lang ON lang.name = LOWER('English')
+JOIN dvdrental.language lang ON LOWER(lang.name) = LOWER('English')
 WHERE NOT EXISTS (SELECT 1 FROM dvdrental.film f WHERE LOWER(f.title) = LOWER(movie.title))
 RETURNING film_id;
 
@@ -41,12 +41,12 @@ INSERT INTO dvdrental.film_actor (film_id, actor_id, last_update)
 SELECT f.film_id, a.actor_id, CURRENT_DATE
 FROM dvdrental.film f
 JOIN dvdrental.actor a ON (
-        (LOWER(a.first_name) = 'leonardo' AND LOWER(a.last_name) = 'dicaprio' AND LOWER(f.title) = 'coco')
-     OR (LOWER(a.first_name) = 'joseph' AND LOWER(a.last_name) = 'gordon-levitt' AND LOWER(f.title) = 'coco')
-     OR (LOWER(a.first_name) = 'morgan' AND LOWER(a.last_name) = 'freeman' AND LOWER(f.title) = 'spotlight')
-     OR (LOWER(a.first_name) = 'tim' AND LOWER(a.last_name) = 'robbins' AND LOWER(f.title) = 'spotlight')
-     OR (LOWER(a.first_name) = 'marlon' AND LOWER(a.last_name) = 'brando' AND LOWER(f.title) = 'little women')
-     OR (LOWER(a.first_name) = 'al' AND LOWER(a.last_name) = 'pacino' AND LOWER(f.title) = 'little women')
+        (LOWER(a.first_name) = (LOWER('leonardo') AND LOWER(a.last_name) = LOWER('dicaprio') AND LOWER(f.title) = LOWER('coco'))
+     OR (LOWER(a.first_name) = (LOWER('joseph') AND LOWER(a.last_name) = LOWER('gordon-levitt') AND LOWER(f.title) = LOWER('coco'))
+     OR (LOWER(a.first_name) = (LOWER('morgan') AND LOWER(a.last_name) = LOWER('freeman') AND LOWER(f.title) = LOWER('spotlight'))
+     OR (LOWER(a.first_name) = (LOWER('tim') AND LOWER(a.last_name) = LOWER('robbins') AND LOWER(f.title) = LOWER('spotlight'))
+     OR (LOWER(a.first_name) = (LOWER('marlon') AND LOWER(a.last_name) = LOWER('brando') AND LOWER(f.title) = LOWER('little women'))
+     OR (LOWER(a.first_name) = (LOWER('al') AND LOWER(a.last_name) = LOWER('pacino') AND LOWER(f.title) = LOWER('little women'))
 )
 WHERE NOT EXISTS (
     SELECT 1 FROM dvdrental.film_actor fa 
@@ -84,7 +84,6 @@ COMMIT;
 
 
 *************************************************************************************************************************
-
 -- Start a transaction to ensure atomic updates
 BEGIN;
 
@@ -98,14 +97,12 @@ WITH target_customer AS (
     HAVING COUNT(DISTINCT r.rental_id) >= 43 AND COUNT(DISTINCT p.payment_id) >= 43
     LIMIT 1  -- Get only one customer
 ),
-
 -- Step 2: Select an existing address from the address table
 target_address AS (
     SELECT address_id
     FROM dvdrental.address
     LIMIT 1  -- Get one address
 )
-
 -- Step 3: Update the identified customer with new personal data
 UPDATE dvdrental.customer
 SET first_name = 'Anna',  
@@ -117,7 +114,6 @@ RETURNING customer_id;  -- Return the updated customer_id for confirmation
 
 -- Commit the transaction to apply changes
 COMMIT;
-
 
 *************************************************************************************************************************
 
@@ -159,7 +155,6 @@ END $$;
 COMMIT;
 
 **********************************************************************************************************************
-
 BEGIN;
 
 -- Step 1: Define CTEs and insert into both rental and payment tables
@@ -201,7 +196,6 @@ inserted_rentals AS (
     )
     RETURNING rental_id, inventory_id, customer_id
 )
-
 -- Step 2: Insert payment records based on the inserted rentals
 INSERT INTO dvdrental.payment (customer_id, staff_id, rental_id, amount, payment_date)
 SELECT 
@@ -221,10 +215,8 @@ WHERE NOT EXISTS (
     WHERE p.customer_id = ir.customer_id AND p.rental_id = ir.rental_id
 )
 RETURNING payment_id;
-
 -- Commit the transaction to apply changes
+
 COMMIT;
-
-
 **********************************************************************************************************************
 

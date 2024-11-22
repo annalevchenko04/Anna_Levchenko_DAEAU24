@@ -1,17 +1,9 @@
-
--- Check if the view already exists, if so, drop it
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.views WHERE table_name = 'sales_revenue_by_category_qtr') THEN
-        DROP VIEW dvdrental.sales_revenue_by_category_qtr;
-    END IF;
-END $$;
-
 -- Create the view
-CREATE VIEW dvdrental.sales_revenue_by_category_qtr AS
+CREATE OR REPLACE VIEW dvdrental.sales_revenue_by_category_qtr AS
 WITH sales_data AS (
     SELECT 
-        fc.category_id,
+        fc.category_id::integer AS category_id, 
+        c.name AS category_name,
         SUM(p.amount) AS total_sales,
         EXTRACT(QUARTER FROM p.payment_date) AS quarter,
         EXTRACT(YEAR FROM p.payment_date) AS year
@@ -19,24 +11,24 @@ WITH sales_data AS (
     JOIN dvdrental.rental r ON p.rental_id = r.rental_id
     JOIN dvdrental.inventory i ON r.inventory_id = i.inventory_id
     JOIN dvdrental.film_category fc ON i.film_id = fc.film_id  
-    WHERE p.payment_date >= DATE_TRUNC('quarter', CURRENT_DATE) 
-          AND p.payment_date < DATE_TRUNC('quarter', CURRENT_DATE) + INTERVAL '3 months'
-    GROUP BY fc.category_id, quarter, year
+    JOIN dvdrental.category c ON fc.category_id = c.category_id
+    GROUP BY fc.category_id, c.name, quarter, year
 )
-SELECT c.category_id, c.name AS category_name, sd.total_sales, sd.quarter, sd.year
-FROM dvdrental.category c
-JOIN sales_data sd ON c.category_id = sd.category_id
-WHERE sd.total_sales > 0
-AND sd.year = EXTRACT(YEAR FROM CURRENT_DATE)
-AND sd.quarter = EXTRACT(QUARTER FROM CURRENT_DATE);
+SELECT 
+    category_id, 
+    category_name, 
+    total_sales, 
+    quarter, 
+    year
+FROM sales_data
+WHERE total_sales > 0
+  AND year = EXTRACT(YEAR FROM CURRENT_DATE)
+  AND quarter = EXTRACT(QUARTER FROM CURRENT_DATE);
 
--- Check if the function already exists, if so, drop it
-DO $$ 
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'get_sales_revenue_by_category_qtr') THEN
-        DROP FUNCTION dvdrental.get_sales_revenue_by_category_qtr;
-    END IF;
-END $$;
+-- Call the view
+SELECT * 
+FROM dvdrental.sales_revenue_by_category_qtr;
+
 
 -- Create the function
 CREATE OR REPLACE FUNCTION dvdrental.get_sales_revenue_by_category_qtr(p_quarter INT, p_year INT)
@@ -48,6 +40,17 @@ RETURNS TABLE (
     year INT
 ) AS $$
 BEGIN
+    -- Validate quarter input
+    IF p_quarter < 1 OR p_quarter > 4 THEN
+        RAISE EXCEPTION 'Invalid quarter: % (should be between 1 and 4)', p_quarter;
+    END IF;
+    
+    -- Validate year input (e.g., must be between 1900 and current year)
+    IF p_year < 1900 OR p_year > EXTRACT(YEAR FROM CURRENT_DATE) THEN
+        RAISE EXCEPTION 'Invalid year: % (should be between 1900 and the current year)', p_year;
+    END IF;
+
+    -- Return the sales data for the requested quarter and year
     RETURN QUERY
     WITH sales_data AS (
         SELECT 
@@ -59,9 +62,9 @@ BEGIN
         JOIN dvdrental.rental r ON p.rental_id = r.rental_id
         JOIN dvdrental.inventory i ON r.inventory_id = i.inventory_id
         JOIN dvdrental.film_category fc ON i.film_id = fc.film_id  -- Corrected join to film_category
-        WHERE p.payment_date >= TO_DATE(p_year || '-01-01', 'YYYY-MM-DD') 
-          AND p.payment_date < TO_DATE(p_year || '-01-01', 'YYYY-MM-DD') + INTERVAL '1 YEAR'
-          AND EXTRACT(QUARTER FROM p.payment_date) = p_quarter
+        WHERE p.payment_date >= DATE(p_year || '-01-01')  -- Start of the year
+          AND p.payment_date < DATE(p_year || '-12-31') + INTERVAL '1 day'  -- End of the year (next year)
+          AND EXTRACT(QUARTER FROM p.payment_date) = p_quarter  -- Filter by quarter
         GROUP BY fc.category_id, quarter, year
     )
     SELECT c.category_id, c.name AS category_name, sd.total_sales, sd.quarter, sd.year
@@ -73,12 +76,13 @@ $$ LANGUAGE plpgsql;
 
 -- Example of calling the function
 SELECT * FROM dvdrental.get_sales_revenue_by_category_qtr(2, 2017);
+SELECT * FROM dvdrental.get_sales_revenue_by_category_qtr(5, 2017); -- will be error
+SELECT * FROM dvdrental.get_sales_revenue_by_category_qtr(1, 1800); -- will be error
 
 
-DROP FUNCTION IF EXISTS dvdrental.most_popular_films_by_countries(text[]);
 
 -- Create the function
-CREATE OR REPLACE FUNCTION dvdrental.most_popular_films_by_countries(countries text[] DEFAULT ARRAY['United States'])
+CREATE OR REPLACE FUNCTION dvdrental.most_popular_films_by_countries(countries text[])
 RETURNS TABLE(
     country TEXT,
     film TEXT,
@@ -95,7 +99,7 @@ BEGIN
 
     -- Main query for retrieving the most popular films by country
     RETURN QUERY
-    WITH RankedFilms AS (
+    WITH PopularFilms AS (
         SELECT 
             c.country AS country,
             f.title AS film,
@@ -103,7 +107,7 @@ BEGIN
             l.name::TEXT AS language,
             f.length::INTEGER AS length,
             f.release_year::INTEGER AS release_year,
-            ROW_NUMBER() OVER (PARTITION BY c.country ORDER BY COUNT(r.rental_id) DESC) AS rank
+            COUNT(r.rental_id) AS rental_count
         FROM 
             dvdrental.country c
         JOIN 
@@ -121,31 +125,36 @@ BEGIN
         JOIN 
             dvdrental.language l ON f.language_id = l.language_id
         WHERE 
-    	    LOWER(c.country) = ANY(ARRAY(SELECT LOWER(unnest(countries))))
+            LOWER(c.country) = ANY(ARRAY(SELECT LOWER(unnest(countries))))
         GROUP BY 
             c.country, f.film_id, f.title, f.rating, l.name, f.length, f.release_year
     )
-    -- Filter to return only the top film per country
-    SELECT
-        RankedFilms.country,      
-        RankedFilms.film,
-        RankedFilms.rating,
-        RankedFilms.language,
-        RankedFilms.length,
-        RankedFilms.release_year
-    FROM RankedFilms
-    WHERE RankedFilms.rank = 1
-    ORDER BY RankedFilms.country;
+    -- Filter to return only the films that have the maximum rental count per country
+    SELECT 
+        pf.country,
+        pf.film,
+        pf.rating,
+        pf.language,
+        pf.length,
+        pf.release_year
+    FROM 
+        PopularFilms pf
+    WHERE 
+        pf.rental_count = (
+            SELECT MAX(pf2.rental_count)
+            FROM PopularFilms pf2
+            WHERE LOWER(pf2.country) = LOWER(pf.country)
+        )
+    ORDER BY 
+        pf.country, pf.film;
 END;
 $$ LANGUAGE plpgsql;
+
 
 -- Example of calling the function
 SELECT * 
 FROM dvdrental.most_popular_films_by_countries(ARRAY['Afghanistan', 'Brazil', 'United States']);
 
-
--- Drop the function if it exists to avoid duplicates
-DROP FUNCTION IF EXISTS dvdrental.films_in_stock_by_title(text);
 
 -- Create or replace the function
 CREATE OR REPLACE FUNCTION dvdrental.films_in_stock_by_title(partial_title text)
@@ -203,8 +212,6 @@ SELECT *
 FROM dvdrental.films_in_stock_by_title('%ali%');
 
 
-DROP FUNCTION IF EXISTS dvdrental.new_movie(text, integer, text);
-
 -- Create or replace the function
 CREATE OR REPLACE FUNCTION dvdrental.new_movie(
     movie_title text,  -- Movie title parameter
@@ -216,6 +223,12 @@ DECLARE
     movie_language_id INTEGER;  -- Variable to store the language_id after verifying it exists
     existing_movie_count INTEGER;  -- Variable to check if the movie already exists
 BEGIN
+
+    -- Check if movie title is NULL or empty
+    IF movie_title IS NULL OR LENGTH(TRIM(movie_title)) = 0 THEN
+        RAISE EXCEPTION 'The movie title cannot be NULL or empty.';
+    END IF;
+	
     -- If language_name is not provided, default to Klingon
     IF language_name IS NULL THEN
         language_name := 'Klingon';
@@ -236,7 +249,7 @@ BEGIN
     IF movie_language_id IS NULL AND UPPER(language_name) = UPPER('KLINGON') THEN
         -- Insert Klingon language into the table
         INSERT INTO dvdrental.language (name) VALUES ('Klingon');
-        
+
         -- Now, select the 'Klingon' language_id after inserting it
         SELECT l.language_id INTO movie_language_id
         FROM dvdrental.language l
@@ -268,6 +281,15 @@ BEGIN
 
     -- Success message for logging purposes
     RAISE NOTICE 'New movie "%" has been added to the film table.', movie_title;
+
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT dvdrental.new_movie('The Matrix', 1999, 'English'); 
+SELECT dvdrental.new_movie('The Matrix'); ---Klingon language will be added to language table, year set to current and this film to film table 
+SELECT dvdrental.new_movie('The Matrix', 1999, 'English'); --- error, alredy exists
+SELECT dvdrental.new_movie(''); --error, title cannot be null
+SELECT dvdrental.new_movie('Avatar', 2009, 'Navi'); --- error, such language not exists
 
 END;
 $$ LANGUAGE plpgsql;

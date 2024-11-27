@@ -1,0 +1,64 @@
+1) Creation of table: Query returned successfully in 34 secs 353 msec.
+2) Initial Space Consumption (After Creation): 575 MB
+3) DELETE Operation Duration: Query returned successfully in 21 secs 892 msec.
+   After DELETE Operation (Without VACUUM): 575 MB (no immediate reduction in disk space)
+   VACUUM FULL Duration: Query returned successfully in 8 secs 674 msec.
+   After DELETE Operation + VACUUM FULL: 383 MB
+4) TRUNCATE Operation Duration: Query returned successfully in 155 msec.
+   After TRUNCATE Operation: 0 bytes
+
+Analysis and Conclusions
+
+DELETE vs. TRUNCATE:
+
+- DELETE removed rows but did not immediately reduce disk space usage due to PostgreSQL’s MVCC, 
+which keeps old row versions until a VACUUM is run. The VACUUM FULL operation then reclaims the space 
+by physically removing the old versions of the deleted rows.
+- TRUNCATE, on the other hand, removes all rows and instantly frees up disk space, showing 0 bytes in 
+space consumption right after execution.
+
+Performance:
+
+-DELETE Operation took significantly longer (21.892 seconds) compared to TRUNCATE (0.155 seconds). 
+DELETE operations can be slower since they must adhere to row-level locks and transaction safety, 
+whereas TRUNCATE is much faster as it doesn’t log individual row deletions.
+
+Space Management and Optimization:
+
+-The VACUUM FULL operation is crucial after DELETE statements for tables where frequent deletions occur, 
+as it reclaims space by reorganizing the table and reducing bloat.
+-TRUNCATE is the preferred method for quickly clearing out an entire table, both in terms of performance 
+and space reclamation, as it bypasses row-level checks and reduces the table size immediately.
+
+Script:
+ CREATE TABLE table_to_delete AS
+               SELECT 'veeeeeeery_long_string' || x AS col
+               FROM generate_series(1,(10^7)::int) x; -- generate_series() creates 10^7 rows of sequential numbers from 1 to 10000000 (10^7)
+ SELECT *, pg_size_pretty(total_bytes) AS total,
+                                    pg_size_pretty(index_bytes) AS INDEX,
+                                    pg_size_pretty(toast_bytes) AS toast,
+                                    pg_size_pretty(table_bytes) AS TABLE
+               FROM ( SELECT *, total_bytes-index_bytes-COALESCE(toast_bytes,0) AS table_bytes
+                               FROM (SELECT c.oid,nspname AS table_schema,
+                                                               relname AS TABLE_NAME,
+                                                              c.reltuples AS row_estimate,
+                                                              pg_total_relation_size(c.oid) AS total_bytes,
+                                                              pg_indexes_size(c.oid) AS index_bytes,
+                                                              pg_total_relation_size(reltoastrelid) AS toast_bytes
+                                              FROM pg_class c
+                                              LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+                                              WHERE relkind = 'r'
+                                              ) a
+                                    ) a
+               WHERE table_name LIKE '%table_to_delete%';
+
+DELETE FROM table_to_delete
+               WHERE REPLACE(col, 'veeeeeeery_long_string','')::int % 3 = 0; -- removes 1/3 of all rows
+
+VACUUM FULL VERBOSE table_to_delete;
+
+CREATE TABLE table_to_delete AS
+               SELECT 'veeeeeeery_long_string' || x AS col
+               FROM generate_series(1,(10^7)::int) x; -- generate_series() creates 10^7 rows of sequential numbers from 1 to 10000000 (10^7)
+
+TRUNCATE table_to_delete;

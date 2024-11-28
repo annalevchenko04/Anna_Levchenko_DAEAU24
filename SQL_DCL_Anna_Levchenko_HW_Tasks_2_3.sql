@@ -1,106 +1,156 @@
-CREATE ROLE rentaluser WITH LOGIN PASSWORD 'rentalpassword';
+-- Ensure the user does not already exist, and create the user
+DO
+$$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'rentaluser'
+    ) THEN
+        CREATE ROLE rentaluser WITH LOGIN PASSWORD 'rentalpassword';
+    END IF;
+END
+$$;
+
 GRANT CONNECT ON DATABASE dvdrental TO rentaluser;
 
-GRANT SELECT ON TABLE dvdrental.customer TO rentaluser;
-SELECT * FROM dvdrental.customer;
+GRANT SELECT ON TABLE public.customer TO rentaluser;
 
-CREATE ROLE rental;
+SET ROLE rentaluser;
+
+SELECT * FROM public.customer; 
+
+RESET ROLE;
+
+DO
+$$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'rental'
+    ) THEN
+        CREATE ROLE rental;
+    END IF;
+END
+$$;
+
+
+-- Grant INSERT and UPDATE to the role and assign it to rentaluser
+GRANT INSERT, UPDATE ON TABLE public.rental TO rental;
+
 GRANT rental TO rentaluser;
 
-GRANT INSERT, UPDATE ON TABLE dvdrental.rental TO rental;
+-- Perform operations as rentaluser
+SET ROLE rentaluser;
 
-
-INSERT INTO dvdrental.rental (rental_id, rental_date, inventory_id, customer_id, return_date, staff_id, last_update)
+-- Insert a new row into the rental table with random data
+INSERT INTO public.rental (rental_id, rental_date, inventory_id, customer_id, return_date, staff_id, last_update)
 VALUES (
-    (SELECT COALESCE(MAX(rental_id), 0) + 1 FROM dvdrental.rental), -- Automatically generate a new ID
+    (SELECT COALESCE(MAX(rental_id), 0) + 1 FROM public.rental), -- Automatically generate a new ID
     CURRENT_DATE + (RANDOM() * 30)::INT * INTERVAL '1 day', -- Random rental_date from now to +1 month
-    (SELECT inventory_id FROM dvdrental.inventory ORDER BY RANDOM() LIMIT 1), -- Random valid inventory_id
-    (SELECT customer_id FROM dvdrental.customer ORDER BY RANDOM() LIMIT 1),   -- Random valid customer_id
+    (SELECT inventory_id FROM public.inventory ORDER BY RANDOM() LIMIT 1), -- Random valid inventory_id
+    (SELECT customer_id FROM public.customer ORDER BY RANDOM() LIMIT 1),   -- Random valid customer_id
     CURRENT_DATE + ((RANDOM() * 30)::INT + 1) * INTERVAL '1 day', -- Random return_date after rental_date
-    (SELECT staff_id FROM dvdrental.staff ORDER BY RANDOM() LIMIT 1),         -- Random valid staff_id
+    (SELECT staff_id FROM public.staff ORDER BY RANDOM() LIMIT 1),         -- Random valid staff_id
     NOW() -- Current timestamp for last_update
 )
 ON CONFLICT (rental_id) DO NOTHING;
 
-SELECT * FROM dvdrental.rental ORDER BY rental_id DESC LIMIT 5;
+-- Verify the last 5 inserted rows
+SELECT * FROM public.rental ORDER BY rental_id DESC LIMIT 5;
 
-UPDATE dvdrental.rental
+-- Update a random row in the rental table
+UPDATE public.rental
 SET
     return_date = rental_date + (1 + (RANDOM() * 15)::INT) * INTERVAL '1 day', -- Random return_date within 1-15 days after rental_date
     last_update = NOW() -- Set last_update to the current timestamp
 WHERE rental_id = (
     SELECT rental_id
-    FROM dvdrental.rental
+    FROM public.rental
     ORDER BY RANDOM()
     LIMIT 1
 );
 
-SELECT * FROM dvdrental.rental
+-- Verify the most recently updated rows
+SELECT * FROM public.rental
 ORDER BY last_update DESC
 LIMIT 5;
 
-REVOKE INSERT ON TABLE dvdrental.rental FROM rental;
+RESET ROLE;
 
----Verify Permissions-----
+-- Revoke INSERT permission from rental role
+REVOKE INSERT ON TABLE public.rental FROM rental;
+
+-- Verify permissions granted to the rental role
 SELECT grantee, privilege_type
 FROM information_schema.role_table_grants
 WHERE table_name = 'rental' AND grantee = 'rental';
 
 
-DO $$
+CREATE OR REPLACE PROCEDURE create_client_role(
+    first_name TEXT,
+    last_name TEXT,
+    secure_password TEXT DEFAULT 'secure_password'
+)
+LANGUAGE plpgsql
+AS $$
 DECLARE
     role_name TEXT;
-    customer_id_var INT; 
+    customer_id_var INT;
 BEGIN
-    -- Dynamically create the role name and get the customer_id
-    SELECT 'client_' || lower(first_name) || '_' || lower(last_name), customer_id
+    -- Dynamically generate the role name and fetch the customer_id
+    SELECT 'client_' || lower($1) || '_' || lower($2), customer_id
     INTO role_name, customer_id_var
-    FROM dvdrental.customer
-    WHERE UPPER(first_name) = UPPER('Maria') AND UPPER(last_name) = UPPER('Miller')
-      AND EXISTS (SELECT 1 FROM dvdrental.payment p WHERE p.customer_id = dvdrental.customer.customer_id)
-      AND EXISTS (SELECT 1 FROM dvdrental.rental r WHERE r.customer_id = dvdrental.customer.customer_id);
+    FROM public.customer c
+    WHERE UPPER(c.first_name) = UPPER($1) 
+      AND UPPER(c.last_name) = UPPER($2)
+      AND EXISTS (SELECT 1 FROM public.payment p WHERE p.customer_id = c.customer_id)
+      AND EXISTS (SELECT 1 FROM public.rental r WHERE r.customer_id = c.customer_id);
 
-    -- Create the role if it doesn't already exist
+    -- Ensure the customer exists
+    IF customer_id_var IS NULL THEN
+        RAISE EXCEPTION 'Customer not found or does not meet the conditions.';
+    END IF;
+
+    -- Create the role if it doesn't exist
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles WHERE rolname = role_name
     ) THEN
-        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD ''secure_password'';', role_name);
+        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L;', role_name, secure_password);
     END IF;
 
-    -- Grant SELECT permissions on the customer table to the dynamically created role
-    EXECUTE format('GRANT SELECT ON dvdrental.customer TO %I;', role_name);
+    -- Grant SELECT privileges on relevant tables to the new role
+    EXECUTE format('GRANT SELECT ON public.customer TO %I;', role_name);
+    EXECUTE format('GRANT SELECT ON public.payment, public.rental TO %I;', role_name);
 
-    -- Grant SELECT privileges on payment and rental tables
-    EXECUTE format('GRANT SELECT ON dvdrental.payment, dvdrental.rental TO %I;', role_name);
+    -- Enable Row-Level Security on the payment and rental tables
+    EXECUTE 'ALTER TABLE public.payment ENABLE ROW LEVEL SECURITY;';
+    EXECUTE 'ALTER TABLE public.rental ENABLE ROW LEVEL SECURITY;';
 
-    -- Enable Row-Level Security for the payment and rental tables
-    EXECUTE '
-        ALTER TABLE dvdrental.payment ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE dvdrental.rental ENABLE ROW LEVEL SECURITY;
-    ';
+    -- Drop existing RLS policies if they exist
+    EXECUTE 'DROP POLICY IF EXISTS client_payment_policy ON public.payment;';
+    EXECUTE 'DROP POLICY IF EXISTS client_rental_policy ON public.rental;';
 
-    -- Drop the existing policies if they exist
-    EXECUTE 'DROP POLICY IF EXISTS client_payment_policy ON dvdrental.payment;';
-    EXECUTE 'DROP POLICY IF EXISTS client_rental_policy ON dvdrental.rental;';
-
-    -- Create the RLS policies for both tables to restrict access to own data
+    -- Create RLS policies for customer-specific access
     EXECUTE format('
         CREATE POLICY client_payment_policy
-        ON dvdrental.payment
+        ON public.payment
         FOR SELECT
         USING (customer_id = %L);', customer_id_var);
 
     EXECUTE format('
         CREATE POLICY client_rental_policy
-        ON dvdrental.rental
+        ON public.rental
         FOR SELECT
         USING (customer_id = %L);', customer_id_var);
-END $$;
+
+    RAISE NOTICE 'Role % created and permissions granted successfully.', role_name;
+END;
+$$;
+
+CALL create_client_role('Maria', 'Miller', 'secure_password');
 
 SET ROLE client_maria_miller;
-SELECT * FROM dvdrental.rental;
-SELECT * FROM dvdrental.payment;
-SELECT * FROM dvdrental.category; ---permission denied
+SELECT * FROM public.rental;
+SELECT * FROM public.payment;
+SELECT * FROM public.category; ---permission denied
 
 
 

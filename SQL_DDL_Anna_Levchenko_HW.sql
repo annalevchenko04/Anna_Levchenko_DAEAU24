@@ -35,7 +35,7 @@ DROP TABLE IF EXISTS auction.AuctionItem CASCADE;
 DROP TABLE IF EXISTS auction.AuctionRecord CASCADE;
 
 -- Person Table
-CREATE TABLE auction.Person (
+CREATE TABLE IF NOT EXISTS auction.Person (
     person_id SERIAL PRIMARY KEY,  -- Unique identifier for each person
     person_name VARCHAR(50) NOT NULL,  -- Person's first name
     person_surname VARCHAR(50) NOT NULL,  -- Person's last name
@@ -46,26 +46,26 @@ CREATE TABLE auction.Person (
 );
 
 -- Category Table
-CREATE TABLE auction.Category (
+CREATE TABLE IF NOT EXISTS auction.Category (
     category_id SERIAL PRIMARY KEY,  -- Unique identifier for each category
     category_name VARCHAR(50) NOT NULL UNIQUE  -- Name of the category, must be unique
 );
 
 -- Country Table
-CREATE TABLE auction.Country (
+CREATE TABLE IF NOT EXISTS auction.Country (
     country_id SERIAL PRIMARY KEY,  -- Unique identifier for each country
     country_name VARCHAR(50) NOT NULL UNIQUE  -- Country name, unique
 );
 
 -- City Table
-CREATE TABLE auction.City (
+CREATE TABLE IF NOT EXISTS auction.City (
     city_id SERIAL PRIMARY KEY,  -- Unique identifier for each city
     country_id INT NOT NULL REFERENCES auction.Country(country_id) ON DELETE CASCADE,  -- References Country, cascades on delete
     city_name VARCHAR(50) NOT NULL
 );
 
 -- Location Table
-CREATE TABLE auction.Location (
+CREATE TABLE IF NOT EXISTS auction.Location (
     location_id SERIAL PRIMARY KEY,  -- Unique identifier for each location
     city_id INT NOT NULL REFERENCES auction.City(city_id) ON DELETE CASCADE,  -- References City, cascades on delete
     street VARCHAR(100) NOT NULL,  -- Name of the street
@@ -73,14 +73,14 @@ CREATE TABLE auction.Location (
 );
 
 -- AuctionHouse Table
-CREATE TABLE auction.AuctionHouse (
+CREATE TABLE IF NOT EXISTS auction.AuctionHouse (
     auction_house_id SERIAL PRIMARY KEY,  -- Unique identifier for each auction house
     auction_house_name VARCHAR(50) NOT NULL,  -- Name of the auction house
     location_id INT NOT NULL REFERENCES auction.Location(location_id) ON DELETE CASCADE  -- References Location, cascades on delete
 );
 
 -- Auction Table
-CREATE TABLE auction.Auction (
+CREATE TABLE IF NOT EXISTS auction.Auction (
     auction_id SERIAL PRIMARY KEY,  -- Unique identifier for each auction
     auction_date DATE NOT NULL DEFAULT CURRENT_DATE CHECK (auction_date > '2000-01-01'),  -- Auction date, defaults to today
     auction_time TIME NOT NULL DEFAULT CURRENT_TIME,  -- Auction time, defaults to current time
@@ -89,7 +89,7 @@ CREATE TABLE auction.Auction (
 );
 
 -- Item Table
-CREATE TABLE auction.Item (
+CREATE TABLE IF NOT EXISTS auction.Item (
     item_id SERIAL PRIMARY KEY,  -- Unique identifier for each item
     person_id INT NOT NULL REFERENCES auction.Person(person_id) ON DELETE SET NULL,  -- References seller (Person), sets to NULL on delete
     starting_price INT NOT NULL CHECK (starting_price > 0),  -- Starting price, must be positive
@@ -99,13 +99,13 @@ CREATE TABLE auction.Item (
 );
 
 -- Role Table
-CREATE TABLE auction.Role (
+CREATE TABLE IF NOT EXISTS auction.Role (
     role_id SERIAL PRIMARY KEY,  -- Unique identifier for each role
     role_name VARCHAR(50) NOT NULL  -- Role name
 );
 
 -- Employee Table
-CREATE TABLE auction.Employee (
+CREATE TABLE IF NOT EXISTS auction.Employee (
     employee_id SERIAL PRIMARY KEY,  -- Unique identifier for each employee
     employee_name VARCHAR(50) NOT NULL,  -- First name of employee
     employee_surname VARCHAR(50) NOT NULL,  -- Last name of employee
@@ -114,7 +114,7 @@ CREATE TABLE auction.Employee (
 );
 
 -- Bid Table
-CREATE TABLE auction.Bid (
+CREATE TABLE IF NOT EXISTS auction.Bid (
     bid_id SERIAL PRIMARY KEY,  -- Unique identifier for each bid
     item_id INT NOT NULL REFERENCES auction.Item(item_id) ON DELETE CASCADE,  -- References Item, cascades on delete
     person_id INT NOT NULL REFERENCES auction.Person(person_id) ON DELETE CASCADE,  -- References Person (buyer), cascades on delete
@@ -123,7 +123,7 @@ CREATE TABLE auction.Bid (
 );
 
 -- Payment Table
-CREATE TABLE auction.Payment (
+CREATE TABLE IF NOT EXISTS auction.Payment (
     payment_id SERIAL PRIMARY KEY,  -- Unique identifier for each payment
     bid_id INT NOT NULL REFERENCES auction.Bid(bid_id) ON DELETE CASCADE,  -- References Bid, cascades on delete
     payment_date DATE NOT NULL DEFAULT CURRENT_DATE CHECK (payment_date > '2000-01-01'),  -- Payment date, defaults to today, after 2000
@@ -131,7 +131,7 @@ CREATE TABLE auction.Payment (
 );
 
 -- AuctionItem Table
-CREATE TABLE auction.AuctionItem (
+CREATE TABLE IF NOT EXISTS auction.AuctionItem (
     auction_item_id SERIAL PRIMARY KEY,  -- Unique identifier for each auction item
     auction_id INT NOT NULL REFERENCES auction.Auction(auction_id) ON DELETE CASCADE,  -- References Auction, cascades on delete
     item_id INT NOT NULL REFERENCES auction.Item(item_id) ON DELETE CASCADE,  -- References Item, cascades on delete
@@ -139,7 +139,7 @@ CREATE TABLE auction.AuctionItem (
 );
 
 -- AuctionRecord Table
-CREATE TABLE auction.AuctionRecord (
+CREATE TABLE IF NOT EXISTS auction.AuctionRecord (
     auction_record_id SERIAL PRIMARY KEY,  -- Unique identifier for each record
     auction_id INT NOT NULL REFERENCES auction.Auction(auction_id) ON DELETE CASCADE,  -- References Auction, cascades on delete
     item_id INT NOT NULL REFERENCES auction.Item(item_id) ON DELETE CASCADE,  -- References Item, cascades on delete

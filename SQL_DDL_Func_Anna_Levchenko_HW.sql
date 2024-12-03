@@ -138,14 +138,17 @@ SELECT *
 FROM public.most_popular_films_by_countries(ARRAY['Afghanistan', 'Brazil', 'United States']);
 
 
--- Create or replace the function
-CREATE OR REPLACE FUNCTION public.films_in_stock_by_title(partial_title text)
+CREATE OR REPLACE FUNCTION public.films_in_stock_by_title(partial_title TEXT)
 RETURNS TABLE(
+    row_numb INT,
     film_title TEXT,
     language TEXT,
     customer_name TEXT,
     rental_date DATE
 ) AS $$
+DECLARE
+    rec RECORD;  -- To hold each row during the loop
+    counter INT := 0;  -- Row number counter
 BEGIN
     -- Check if the input is null or empty, raise an exception if true
     IF partial_title IS NULL OR partial_title = '' THEN
@@ -153,48 +156,60 @@ BEGIN
     END IF;
 
     -- Main query to fetch films available in stock based on partial title match
-    RETURN QUERY
-    WITH film_rentals AS (
-        SELECT 
-            f.title AS film_title,
-            l.name::TEXT AS language,  -- Ensure language is returned as text
-            c.first_name || ' ' || c.last_name AS customer_name,
-            r.rental_date::DATE AS rental_date  -- Ensure rental date is in DATE format
-        FROM 
-            public.film f
-        JOIN 
-            public.language l ON f.language_id = l.language_id
-        LEFT JOIN 
-            public.inventory i ON f.film_id = i.film_id
-        LEFT JOIN 
-            public.rental r ON i.inventory_id = r.inventory_id
-        LEFT JOIN 
-            public.customer c ON r.customer_id = c.customer_id
-        WHERE 
-            f.title ILIKE partial_title   -- Use ILIKE for case-insensitive partial matching
-            AND (r.return_date IS NULL OR r.return_date > CURRENT_DATE)  -- Ensure the film is not rented or is still due to return
-    )
-    -- Select distinct films (no duplicates), ordering by rental date or title
-    SELECT DISTINCT ON (fr.film_title) 
-        fr.film_title, 
-        fr.language, 
-        fr.customer_name, 
-        fr.rental_date
-    FROM film_rentals fr
-    ORDER BY fr.film_title, fr.rental_date DESC;  -- Order by title, and for each title, show the most recent rental
+    FOR rec IN 
+        WITH film_rentals AS (
+            SELECT 
+                f.title AS film_title,
+                l.name::TEXT AS language,  -- Ensure language is returned as text
+                c.first_name || ' ' || c.last_name AS customer_name,
+                r.rental_date::DATE AS rental_date  -- Ensure rental date is in DATE format
+            FROM 
+                public.film f
+            JOIN 
+                public.language l ON f.language_id = l.language_id
+            LEFT JOIN 
+                public.inventory i ON f.film_id = i.film_id
+            LEFT JOIN 
+                public.rental r ON i.inventory_id = r.inventory_id
+            LEFT JOIN 
+                public.customer c ON r.customer_id = c.customer_id
+            WHERE 
+                f.title ILIKE partial_title   -- Use ILIKE for case-insensitive partial matching
+                AND (r.return_date IS NULL OR r.return_date > CURRENT_DATE)  -- Ensure the film is not rented or is still due to return
+        )
+        SELECT DISTINCT ON (fr.film_title) 
+            fr.film_title, 
+            fr.language, 
+            fr.customer_name, 
+            fr.rental_date
+        FROM film_rentals fr
+        ORDER BY fr.film_title, fr.rental_date DESC  -- Order by title, and for each title, show the most recent rental
+    LOOP
+        -- Increment the counter
+        counter := counter + 1;
+
+        -- Assign values directly to the OUT parameters
+        row_numb := counter;
+        film_title := rec.film_title;
+        language := rec.language;
+        customer_name := rec.customer_name;
+        rental_date := rec.rental_date;
+
+        -- Return the current row
+        RETURN NEXT;
+    END LOOP;
 
     -- If no results are found, raise an exception with a custom message
-    IF NOT FOUND THEN
+    IF counter = 0 THEN
         RAISE EXCEPTION 'No films found in stock matching the title: %', partial_title;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
 
+
 -- Example of calling the function
 SELECT * 
 FROM public.films_in_stock_by_title('%ali%');
-
-
 
 -- Create or replace the function
 CREATE OR REPLACE FUNCTION public.new_movie(

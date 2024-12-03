@@ -5,7 +5,7 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles WHERE rolname = 'rentaluser'
     ) THEN
-        CREATE ROLE rentaluser WITH LOGIN PASSWORD 'rentalpassword';
+        CREATE USER rentaluser WITH LOGIN PASSWORD 'rentalpassword';
     END IF;
 END
 $$;
@@ -14,10 +14,10 @@ GRANT CONNECT ON DATABASE dvdrental TO rentaluser;
 
 GRANT SELECT ON TABLE public.customer TO rentaluser;
 
+
+-- Set the rentaluser role and verify access
 SET ROLE rentaluser;
-
-SELECT * FROM public.customer; 
-
+SELECT * FROM public.customer;  -- Test access to the customer table
 RESET ROLE;
 
 DO
@@ -31,14 +31,13 @@ BEGIN
 END
 $$;
 
+GRANT rental TO rentaluser;
 
 -- Grant INSERT and UPDATE to the role and assign it to rentaluser
 GRANT INSERT, UPDATE ON TABLE public.rental TO rental;
 
-GRANT rental TO rentaluser;
-
 -- Perform operations as rentaluser
-SET ROLE rentaluser;
+SET ROLE rental;
 
 -- Insert a new row into the rental table with random data
 INSERT INTO public.rental (rental_id, rental_date, inventory_id, customer_id, return_date, staff_id, last_update)

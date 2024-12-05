@@ -34,7 +34,10 @@ $$;
 GRANT rental TO rentaluser;
 
 -- Grant INSERT and UPDATE to the role and assign it to rentaluser
-GRANT INSERT, UPDATE ON TABLE public.rental TO rental;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.rental TO rental;
+GRANT SELECT (inventory_id) ON TABLE public.inventory TO rental;
+GRANT SELECT (customer_id) ON TABLE public.customer TO rental;
+GRANT SELECT (staff_id) ON TABLE public.staff TO rental;
 
 -- Perform operations as rentaluser
 SET ROLE rental;

@@ -40,15 +40,19 @@ Total_Sales_Per_Year AS (
     GROUP BY 
         T.CALENDAR_YEAR, R.COUNTRY_REGION
 ),
-Sales_With_Lag AS (
+Sales_With_Window_Frames AS (
     SELECT 
         sp.CALENDAR_YEAR,
         sp.COUNTRY_REGION,
         sp.CHANNEL_DESC,
         sp.AMOUNT_SOLD,
         ts.TOTAL_SALES,
-        LAG(sp.AMOUNT_SOLD) OVER (PARTITION BY sp.COUNTRY_REGION, sp.CHANNEL_DESC ORDER BY sp.CALENDAR_YEAR) AS PREV_AMOUNT_SOLD,
-        LAG(ts.TOTAL_SALES) OVER (PARTITION BY sp.COUNTRY_REGION ORDER BY sp.CALENDAR_YEAR) AS PREV_TOTAL_SALES
+        
+        -- Using window frames to get previous year's sales amount
+        SUM(sp.AMOUNT_SOLD) OVER (PARTITION BY sp.COUNTRY_REGION, sp.CHANNEL_DESC ORDER BY sp.CALENDAR_YEAR ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PREV_AMOUNT_SOLD,
+        
+        -- Using window frames to get previous year's total sales
+        SUM(ts.TOTAL_SALES) OVER (PARTITION BY sp.COUNTRY_REGION ORDER BY sp.CALENDAR_YEAR ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PREV_TOTAL_SALES
     FROM 
         Sales_Per_Channel sp
     JOIN 
@@ -79,7 +83,7 @@ SELECT
         2), '999.99'
     ) || '%' AS "% DIFF"
 FROM 
-    Sales_With_Lag
+    Sales_With_Window_Frames
 WHERE 
     CALENDAR_YEAR BETWEEN 1999 AND 2001 -- Exclude 1998 from final output
 ORDER BY 
@@ -114,6 +118,7 @@ Cumulative_Sales AS (
         SUM(FS.daily_amount_sold) OVER (
             PARTITION BY FS.calendar_week_number
             ORDER BY FS.day_number_in_week
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS cum_sum
     FROM 
         Filtered_Sales FS
@@ -127,39 +132,31 @@ Centered_Avg_Sales AS (
         CS.day_number_in_week,
         CS.daily_amount_sold,
         CS.cum_sum,
-        -- Count non-NULL values
+        
+  -- Calculate for Monday: Check if it's the first Monday of the week dynamically
         CASE 
+            WHEN CS.day_number_in_week = 1 AND CS.calendar_week_number = (SELECT MIN(calendar_week_number) FROM Filtered_Sales WHERE calendar_year = 1999) THEN 
+                -- First Monday of the first week: Use Monday and Tuesday only
+                AVG(CS.daily_amount_sold) OVER (
+                    ORDER BY CS.time_id 
+                    ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+                )
+            
+            -- For subsequent Mondays (or any other day of the week)
             WHEN CS.day_number_in_week = 1 THEN 
-                -- Monday: Handle 4-day average with possible NULLs
-                (COALESCE(LAG(CS.daily_amount_sold, 2) OVER (ORDER BY CS.time_id), 0) +
-                 COALESCE(LAG(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id), 0) +
-                 CS.daily_amount_sold +
-                 COALESCE(LEAD(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id), 0)) 
-                 /
-                (CASE WHEN LAG(CS.daily_amount_sold, 2) OVER (ORDER BY CS.time_id) IS NOT NULL THEN 1 ELSE 0 END +
-                 CASE WHEN LAG(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id) IS NOT NULL THEN 1 ELSE 0 END +
-                 1 +
-                 CASE WHEN LEAD(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id) IS NOT NULL THEN 1 ELSE 0 END)
+                -- Centered 3-day average for other Mondays
+                AVG(CS.daily_amount_sold) OVER (
+                    ORDER BY CS.time_id 
+                    ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING
+                )
+            
+            -- Special Calculation for Friday (Thursday, Friday, Weekend)
             WHEN CS.day_number_in_week = 5 THEN 
-                -- Friday: Handle 4-day average with possible NULLs
-                (COALESCE(LAG(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id), 0) +
-                 CS.daily_amount_sold +
-                 COALESCE(LEAD(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id), 0) +
-                 COALESCE(LEAD(CS.daily_amount_sold, 2) OVER (ORDER BY CS.time_id), 0)) 
-                 /
-                (CASE WHEN LAG(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id) IS NOT NULL THEN 1 ELSE 0 END +
-                 1 +
-                 CASE WHEN LEAD(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id) IS NOT NULL THEN 1 ELSE 0 END +
-                 CASE WHEN LEAD(CS.daily_amount_sold, 2) OVER (ORDER BY CS.time_id) IS NOT NULL THEN 1 ELSE 0 END)
+                AVG(CS.daily_amount_sold) OVER (ORDER BY CS.time_id ROWS BETWEEN 1 PRECEDING AND 2 FOLLOWING)
+            
+            -- Centered 3-day average for all other days
             ELSE 
-                -- Centered 3-day average for all other days
-                (COALESCE(LAG(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id), 0) +
-                 CS.daily_amount_sold +
-                 COALESCE(LEAD(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id), 0)) 
-                 /
-                (CASE WHEN LAG(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id) IS NOT NULL THEN 1 ELSE 0 END +
-                 1 +
-                 CASE WHEN LEAD(CS.daily_amount_sold, 1) OVER (ORDER BY CS.time_id) IS NOT NULL THEN 1 ELSE 0 END)
+                AVG(CS.daily_amount_sold) OVER (ORDER BY CS.time_id ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)
         END AS centered_3_day_avg
     FROM 
         Cumulative_Sales CS

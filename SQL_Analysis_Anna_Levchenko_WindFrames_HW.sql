@@ -1,10 +1,14 @@
 ---------------------------------------Task 1 ---------------------------------------
-WITH Sales_Per_Channel AS (
-    SELECT 
+WITH sales_by_channel AS (
+    SELECT
+        R.COUNTRY_REGION,
         T.CALENDAR_YEAR,
-        R.COUNTRY_REGION, 
-        C.CHANNEL_DESC, 
-        ROUND(SUM(S.AMOUNT_SOLD), 2) AS AMOUNT_SOLD
+        C.CHANNEL_DESC,
+        SUM(S.AMOUNT_SOLD) AS AMOUNT_SOLD,
+        SUM(S.AMOUNT_SOLD) * 100.0 / SUM(SUM(S.AMOUNT_SOLD)) OVER (
+            PARTITION BY R.COUNTRY_REGION, T.CALENDAR_YEAR
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS PERCENTAGE_BY_CHANNELS
     FROM 
         SH.SALES S
     JOIN 
@@ -16,162 +20,108 @@ WITH Sales_Per_Channel AS (
     JOIN 
         SH.COUNTRIES R ON CUS.COUNTRY_ID = R.COUNTRY_ID
     WHERE 
-        R.COUNTRY_REGION IN ('Americas', 'Asia', 'Europe')
-        AND T.CALENDAR_YEAR BETWEEN 1998 AND 2001 -- Include 1998 for LAG calculations
+        LOWER(R.COUNTRY_REGION) IN (LOWER('Americas'), LOWER('Asia'), LOWER('Europe'))
+        AND T.CALENDAR_YEAR BETWEEN 1998 AND 2001
     GROUP BY 
-        T.CALENDAR_YEAR, R.COUNTRY_REGION, C.CHANNEL_DESC
+        R.COUNTRY_REGION, T.CALENDAR_YEAR, C.CHANNEL_DESC
 ),
-Total_Sales_Per_Year AS (
-    SELECT 
-        T.CALENDAR_YEAR,
-        R.COUNTRY_REGION, 
-        ROUND(SUM(S.AMOUNT_SOLD), 2) AS TOTAL_SALES
+lagged_sales AS (
+    SELECT
+        COUNTRY_REGION,
+        CALENDAR_YEAR,
+        CHANNEL_DESC,
+        AMOUNT_SOLD,
+        PERCENTAGE_BY_CHANNELS,
+        LAG(PERCENTAGE_BY_CHANNELS) OVER (
+            PARTITION BY COUNTRY_REGION, CHANNEL_DESC 
+            ORDER BY CALENDAR_YEAR
+            ROWS BETWEEN 1 PRECEDING AND CURRENT ROW
+        ) AS PERCENTAGE_PREVIOUS_PERIOD
     FROM 
-        SH.SALES S
-    JOIN 
-        SH.TIMES T ON S.TIME_ID = T.TIME_ID
-    JOIN 
-        SH.CUSTOMERS CUS ON S.CUST_ID = CUS.CUST_ID
-    JOIN 
-        SH.COUNTRIES R ON CUS.COUNTRY_ID = R.COUNTRY_ID
-    WHERE 
-        R.COUNTRY_REGION IN ('Americas', 'Asia', 'Europe')
-        AND T.CALENDAR_YEAR BETWEEN 1998 AND 2001 -- Include 1998 for LAG calculations
-    GROUP BY 
-        T.CALENDAR_YEAR, R.COUNTRY_REGION
-),
-Sales_With_Window_Frames AS (
-    SELECT 
-        sp.CALENDAR_YEAR,
-        sp.COUNTRY_REGION,
-        sp.CHANNEL_DESC,
-        sp.AMOUNT_SOLD,
-        ts.TOTAL_SALES,
-        
-        -- Using window frames to get previous year's sales amount
-        SUM(sp.AMOUNT_SOLD) OVER (PARTITION BY sp.COUNTRY_REGION, sp.CHANNEL_DESC ORDER BY sp.CALENDAR_YEAR ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PREV_AMOUNT_SOLD,
-        
-        -- Using window frames to get previous year's total sales
-        SUM(ts.TOTAL_SALES) OVER (PARTITION BY sp.COUNTRY_REGION ORDER BY sp.CALENDAR_YEAR ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) AS PREV_TOTAL_SALES
-    FROM 
-        Sales_Per_Channel sp
-    JOIN 
-        Total_Sales_Per_Year ts ON sp.CALENDAR_YEAR = ts.CALENDAR_YEAR 
-                                 AND sp.COUNTRY_REGION = ts.COUNTRY_REGION
+        sales_by_channel
 )
-SELECT 
-    CALENDAR_YEAR,
-    COUNTRY_REGION,
-    CHANNEL_DESC,
-    -- Formatting AMOUNT_SOLD with dollar sign and comma separators
-    TO_CHAR(AMOUNT_SOLD, 'FM$999,999,999') AS AMOUNT_SOLD,
-    
-    -- Formatting "% BY CHANNELS" with percentage sign and two decimal places
-    TO_CHAR(ROUND(AMOUNT_SOLD / TOTAL_SALES * 100, 2), '999.99') || '%' AS "% BY CHANNELS",
-    
-    -- Handling NULL values for PREV_AMOUNT_SOLD and PREV_TOTAL_SALES, using 0 if necessary
-    TO_CHAR(
-        ROUND(COALESCE(PREV_AMOUNT_SOLD, 0) / COALESCE(PREV_TOTAL_SALES, 1) * 100, 2), 
-        '999.99'
-    ) || '%' AS "% PREVIOUS PERIOD",
-    
-    -- Calculating the difference in percentage and formatting
-    TO_CHAR(
-        ROUND(
-            ROUND(AMOUNT_SOLD / TOTAL_SALES * 100, 2) - 
-            ROUND(COALESCE(PREV_AMOUNT_SOLD, 0) / COALESCE(PREV_TOTAL_SALES, 1) * 100, 2),
-        2), '999.99'
-    ) || '%' AS "% DIFF"
+SELECT
+    ls.COUNTRY_REGION,
+    ls.CALENDAR_YEAR,
+    ls.CHANNEL_DESC,
+    TO_CHAR(ls.AMOUNT_SOLD, 'FM$999,999,999') AS AMOUNT_SOLD,
+    TO_CHAR(ROUND(ls.PERCENTAGE_BY_CHANNELS, 2), '999.99') || '%' AS "% BY CHANNELS",
+    TO_CHAR(ROUND(COALESCE(ls.PERCENTAGE_PREVIOUS_PERIOD, 0), 2), '999.99') || '%' AS "% PREVIOUS PERIOD",
+    TO_CHAR(ROUND(ls.PERCENTAGE_BY_CHANNELS - COALESCE(ls.PERCENTAGE_PREVIOUS_PERIOD, 0), 2), '999.99') || '%' AS "% DIFFERENCE"
 FROM 
-    Sales_With_Window_Frames
+    lagged_sales ls
 WHERE 
-    CALENDAR_YEAR BETWEEN 1999 AND 2001 -- Exclude 1998 from final output
+    ls.CALENDAR_YEAR BETWEEN 1999 AND 2001
 ORDER BY 
-    COUNTRY_REGION, CALENDAR_YEAR, CHANNEL_DESC;
+    ls.COUNTRY_REGION, ls.CALENDAR_YEAR, ls.CHANNEL_DESC;
+
 ---------------------------------------Task 2 ---------------------------------------
 WITH Filtered_Sales AS (
-    SELECT 
+    SELECT DISTINCT
         T.time_id,
         T.day_name,
         T.calendar_week_number,
         T.calendar_year,
         T.day_number_in_week,
-        SUM(S.amount_sold) AS daily_amount_sold
+        -- Calculate daily sales as a window function
+        SUM(S.amount_sold) OVER (
+            PARTITION BY T.calendar_week_number, T.calendar_year, T.day_number_in_week
+            ORDER BY T.time_id
+        ) AS daily_amount_sold,  -- This is now a window function
+        -- Cumulative sales using window function 
+        SUM(S.amount_sold) OVER (
+            PARTITION BY T.calendar_week_number
+            ORDER BY T.day_number_in_week
+            GROUPS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS cum_sum  
     FROM 
         sh.SALES S
     JOIN 
         sh.TIMES T ON S.time_id = T.time_id
     WHERE 
         T.calendar_year = 1999
-        AND T.calendar_week_number BETWEEN 49 AND 51
-    GROUP BY 
-        T.time_id, T.day_name, T.calendar_week_number, T.calendar_year, T.day_number_in_week
-),
-Cumulative_Sales AS (
-    SELECT 
+        AND T.calendar_week_number BETWEEN 49 AND 51  -- Filter for weeks 49 to 51 of 1999
+)
+SELECT
+	    FS.calendar_week_number,
         FS.time_id,
         FS.day_name,
-        FS.calendar_week_number,
-        FS.calendar_year,
-        FS.day_number_in_week,
         FS.daily_amount_sold,
-        SUM(FS.daily_amount_sold) OVER (
-            PARTITION BY FS.calendar_week_number
-            ORDER BY FS.day_number_in_week
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS cum_sum
-    FROM 
-        Filtered_Sales FS
-),
-Centered_Avg_Sales AS (
-    SELECT 
-        CS.time_id,
-        CS.day_name,
-        CS.calendar_week_number,
-        CS.calendar_year,
-        CS.day_number_in_week,
-        CS.daily_amount_sold,
-        CS.cum_sum,
-        
-  -- Calculate for Monday: Check if it's the first Monday of the week dynamically
-        CASE 
-            WHEN CS.day_number_in_week = 1 AND CS.calendar_week_number = (SELECT MIN(calendar_week_number) FROM Filtered_Sales WHERE calendar_year = 1999) THEN 
-                -- First Monday of the first week: Use Monday and Tuesday only
-                AVG(CS.daily_amount_sold) OVER (
-                    ORDER BY CS.time_id 
+        FS.cum_sum,
+        -- Calculate the centered 3-day moving average with special rules for Monday and Friday
+       ROUND(
+	   CASE 
+            WHEN FS.day_number_in_week = 1 AND FS.calendar_week_number = (SELECT MIN(calendar_week_number) FROM Filtered_Sales WHERE calendar_year = 1999) THEN 
+                -- For the first Monday of the first week: Use Monday, Tuesday, and the weekend (Saturday and Sunday)
+                AVG(FS.daily_amount_sold) OVER (
+                    ORDER BY FS.time_id 
                     ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
                 )
             
-            -- For subsequent Mondays (or any other day of the week)
-            WHEN CS.day_number_in_week = 1 THEN 
-                -- Centered 3-day average for other Mondays
-                AVG(CS.daily_amount_sold) OVER (
-                    ORDER BY CS.time_id 
+            WHEN FS.day_number_in_week = 1 THEN 
+                -- Centered 3-day average for Mondays (other than the first Monday)
+                AVG(FS.daily_amount_sold) OVER (
+                    ORDER BY FS.time_id 
                     ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING
                 )
             
-            -- Special Calculation for Friday (Thursday, Friday, Weekend)
-            WHEN CS.day_number_in_week = 5 THEN 
-                AVG(CS.daily_amount_sold) OVER (ORDER BY CS.time_id ROWS BETWEEN 1 PRECEDING AND 2 FOLLOWING)
+            WHEN FS.day_number_in_week = 5 THEN 
+                -- Special calculation for Fridays (Thursday, Friday, and weekend)
+                AVG(FS.daily_amount_sold) OVER (
+                    ORDER BY FS.time_id 
+                    ROWS BETWEEN 1 PRECEDING AND 2 FOLLOWING
+                )
             
-            -- Centered 3-day average for all other days
             ELSE 
-                AVG(CS.daily_amount_sold) OVER (ORDER BY CS.time_id ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)
-        END AS centered_3_day_avg
-    FROM 
-        Cumulative_Sales CS
-)
-SELECT 
-    calendar_week_number,
-    time_id,
-    day_name,
-    daily_amount_sold,
-    cum_sum,
-    ROUND(centered_3_day_avg, 2) AS centered_3_day_avg
-FROM 
-    Centered_Avg_Sales
+                -- Centered 3-day average for other days
+                AVG(FS.daily_amount_sold) OVER (
+                    ORDER BY FS.time_id 
+                    ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+                )
+        END, 2) AS centered_3_day_avg
+FROM Filtered_Sales FS
 ORDER BY 
-    calendar_week_number, day_number_in_week;
+    FS.calendar_week_number, FS.day_number_in_week;
 
 ---------------------------------------Task 3 ---------------------------------------
 ---For showing difference between ROWS, RANGE and GROUPS------

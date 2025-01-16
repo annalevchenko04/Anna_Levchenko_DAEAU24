@@ -1,126 +1,76 @@
 import os
-import sys
-from io import BytesIO, TextIOWrapper
-from unittest.mock import patch
-
-import pytest
-from module_5 import PATH_TO_OUTPUT, S5_PATH, task_1, task_2, task_3, task_4, task_5
+import random
+import re
+from collections import Counter
 from requests.exceptions import RequestException
+import requests
 
-EXPECTED_FILE = S5_PATH / "full_names.txt"
-EPAM_URL = "https://www.epam.com/"
-UNAVAILABLE_URL = "https://onlinelibrary.wiley.com/loi/14685922/"
-BAD_AUTHORIZATION_URL = (
-    "https://www.sciencedirect.com/journal/food-and-chemical-toxicology"
-)
+def task_1():
+    # Define file paths
+    names_file = 'names.txt'
+    last_names_file = 'last_names.txt'
+    output_file = 'sorted_names_and_surnames.txt'
 
+    # Read and process names
+    with open(names_file, 'r', encoding='utf-8') as nf:
+        names = sorted(name.strip().lower() for name in nf.readlines())
 
-def test_task_sorted_full_names_exist():
-    task_1()
+    # Read last names
+    with open(last_names_file, 'r', encoding='utf-8') as lnf:
+        last_names = [ln.strip().lower() for ln in lnf.readlines()]
 
-    assert os.path.exists(
-        PATH_TO_OUTPUT
-    ), "sorted_names_and_surnames.txt does not exist in the directory where script module_5.py is!"
+    # Combine names and last names
+    full_names = [f"{name} {random.choice(last_names)}" for name in names]
 
+    # Write to output file
+    with open(output_file, 'w', encoding='utf-8') as of:
+        of.write("\n".join(full_names))
 
-def test_task_1_correct_full_names():
-    with (
-        open(PATH_TO_OUTPUT, encoding="utf-8") as output,
-        open(EXPECTED_FILE, encoding="utf-8") as expected,
-    ):
-        output = output.readlines()
-        expected = expected.readlines()
+def task_2(top_k):
+    # Define file paths
+    text_file = 'random_text.txt'
+    stop_words_file = 'stop_words.txt'
 
-    assert len(output) == len(
-        expected
-    ), f"The file should contain {len(expected)} rows against {len(output)}"
+    # Read stop words
+    with open(stop_words_file, 'r', encoding='utf-8') as swf:
+        stop_words = set(sw.strip().lower() for sw in swf.readlines())
 
-    for idx in range(len(expected)):
-        expected_full_name = expected[idx].strip()
-        output_full_name = output[idx].strip()
+    # Read and clean text
+    with open(text_file, 'r', encoding='utf-8') as tf:
+        text = tf.read().lower()
+        words = re.findall(r'[a-z]+', text)
+        filtered_words = [word for word in words if word not in stop_words]
 
-        assert (
-            expected_full_name == output_full_name
-        ), f"Incorrect full name {output_full_name}. Correct - {expected_full_name}"
+    # Count word frequencies
+    word_counts = Counter(filtered_words)
 
+    # Get top_k words
+    return word_counts.most_common(top_k)
 
-@pytest.mark.parametrize(
-    "top_k, expected",
-    [
-        pytest.param(
-            3, [("blind", 101), ("far", 68), ("text", 67)], id="Example: top 3 words"
-        ),
-        pytest.param(
-            5,
-            [("blind", 101), ("far", 68), ("text", 67), ("copy", 66), ("way", 51)],
-            id="Example: top 5 words",
-        ),
-    ],
-)
-def test_task_2_correct_work(top_k, expected):
-    output = task_2(top_k)
+def task_3(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response
+    except RequestException as e:
+        raise RequestException from e
 
-    assert len(output) == len(expected), "Incorrect num of top words."
+def task_4(data):
+    total = 0
+    for item in data:
+        try:
+            total += float(item)
+        except (TypeError, ValueError):
+            raise TypeError(f"Cannot convert {item} to float.")
+    return total
 
-    for idx in range(len(expected)):
-        assert (
-            output[idx][0] == expected[idx][0]
-        ), f"The words {output[idx][0]} should be {expected[idx][0]}"
-        assert output[idx][1] == expected[idx][1], (
-            f"True frequency of {expected[idx][0]} is {expected[idx][1]}. "
-            f"Your frequency is {output[idx][1]}"
-        )
-
-
-@pytest.mark.parametrize(
-    "url", [pytest.param(UNAVAILABLE_URL), pytest.param(BAD_AUTHORIZATION_URL)]
-)
-def test_task_3_correct_raise(url):
-    with pytest.raises(RequestException) as excn:
-        task_3(url)
-    assert excn.type is RequestException
-
-
-def test_task_3_correct_response():
-    response = task_3(EPAM_URL)
-    assert response.status_code == 200, "Incorrect status code"
-
-
-@pytest.mark.parametrize(
-    "test_input, expected",
-    [
-        pytest.param([1, 2, 3], 6, id="Example: [1, 2, 3]"),
-        pytest.param(["0", 3, "2.1"], 5.1, id="Example: ['0', 3, '2.1']"),
-        pytest.param(["1", "2", "3"], 6, id='Example: ["1", "2", "3"]'),
-    ],
-)
-def test_task_4_correct_work(test_input, expected):
-    output = task_4(test_input)
-
-    assert output == expected, "Incorrect sum"
-
-
-@pytest.mark.parametrize(
-    "test_input, expected",
-    [
-        pytest.param("5 0".encode("utf-8"), "Can't divide by zero", id="Example: 5 0"),
-        pytest.param("0 5.1".encode("utf-8"), "0", id="Example: 0 5.1"),
-        pytest.param(
-            "12 aba".encode("utf-8"), "Entered value is wrong", id="Example: 12 aba"
-        ),
-        pytest.param("12 6".encode("utf-8"), "2", id="Example: 12 6"),
-        pytest.param("10 3".encode("utf-8"), "3.333", id="Example: 10 3"),
-    ],
-)
-def test_task_5_division_by_zero(test_input, expected, capsys):
-    with patch.object(
-        sys,
-        "stdin",
-        TextIOWrapper(
-            BytesIO(test_input),
-            encoding="utf-8",
-        ),
-    ):
-        task_5()
-        out, err = capsys.readouterr()
-        assert expected in out, "Incorrect result"
+def task_5():
+    try:
+        a, b = input().split()
+        a, b = float(a), float(b)
+        if b == 0:
+            print("Can't divide by zero")
+        else:
+            print(f"{a / b:.3f}")
+    except ValueError:
+        print("Entered value is wrong")

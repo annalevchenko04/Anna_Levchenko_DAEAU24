@@ -1,0 +1,45 @@
+
+CREATE OR REPLACE FUNCTION bl_cl.get_payment_methods()
+RETURNS SETOF BL_3NF.CE_PAYMENT_METHODS -- Directly returning rows from the table
+LANGUAGE 'plpgsql'
+AS $BODY$
+BEGIN
+    RETURN QUERY
+    SELECT * FROM BL_3NF.CE_PAYMENT_METHODS;
+END;
+$BODY$;
+
+
+CREATE OR REPLACE FUNCTION bl_cl.get_sales_channels()
+RETURNS SETOF BL_3NF.CE_SALES_CHANNELS
+LANGUAGE 'plpgsql'
+AS $BODY$
+BEGIN
+    RETURN QUERY
+    SELECT * FROM BL_3NF.CE_SALES_CHANNELS;
+END;
+$BODY$;
+
+
+
+CREATE OR REPLACE FUNCTION bl_cl.get_states()
+RETURNS SETOF BL_3NF.CE_STATES
+LANGUAGE 'plpgsql'
+AS $BODY$
+BEGIN
+    RETURN QUERY
+    SELECT * FROM BL_3NF.CE_STATES;
+END;
+$BODY$;
+
+
+SELECT * FROM bl_cl.get_payment_methods();
+
+SELECT * FROM bl_cl.get_sales_channels();
+
+SELECT * FROM bl_cl.get_states();
+
+
+
+
+

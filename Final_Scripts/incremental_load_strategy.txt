@@ -1,0 +1,9 @@
+To perform incremental load I should run:
+
+1) CALL public.create_and_populate_sales_data();
+
+This query will load rows from exteranl table to src tables.
+
+2) CALL bl_cl.load_all_data();
+
+This query will load new rows to 3nf and dim layers.

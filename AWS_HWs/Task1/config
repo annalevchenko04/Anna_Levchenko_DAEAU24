@@ -1,0 +1,14 @@
+[profile user-role-260586643565]
+sso_start_url = https://epam.awsapps.com/start
+sso_region = us-east-1
+sso_account_id = 260586643565
+sso_role_name = User
+region = eu-central-1
+
+[profile students-role]
+region = eu-central-1
+source_profile = user-role-260586643565
+sso_start_url = https://epam.awsapps.com/start
+sso_region = us-east-1
+role_arn = arn:aws:iam::260586643565:role/students-role
+

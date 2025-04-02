@@ -1,0 +1,24 @@
+{
+    "employees_2_anna_levchenko": [
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1001"}, "Name": {"S": "Anna Levchenko"}, "Salary": {"N": "1000"}, "Department": {"S": "IT"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1002"}, "Name": {"S": "John Doe"}, "Salary": {"N": "2000"}, "Department": {"S": "HR"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1003"}, "Name": {"S": "Jane Smith"}, "Salary": {"N": "3000"}, "Department": {"S": "Finance"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1004"}, "Name": {"S": "Mike Johnson"}, "Salary": {"N": "4000"}, "Department": {"S": "Marketing"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1005"}, "Name": {"S": "Emily Davis"}, "Salary": {"N": "5000"}, "Department": {"S": "IT"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1006"}, "Name": {"S": "David Wilson"}, "Salary": {"N": "6000"}, "Department": {"S": "HR"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1007"}, "Name": {"S": "Sarah Brown"}, "Salary": {"N": "7000"}, "Department": {"S": "Finance"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1008"}, "Name": {"S": "Chris White"}, "Salary": {"N": "8000"}, "Department": {"S": "Marketing"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1009"}, "Name": {"S": "Laura Adams"}, "Salary": {"N": "9000"}, "Department": {"S": "IT"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1010"}, "Name": {"S": "Robert Garcia"}, "Salary": {"N": "10000"}, "Department": {"S": "HR"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1011"}, "Name": {"S": "Lisa Martinez"}, "Salary": {"N": "11000"}, "Department": {"S": "Finance"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1012"}, "Name": {"S": "Kevin Anderson"}, "Salary": {"N": "12000"}, "Department": {"S": "Marketing"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1013"}, "Name": {"S": "Emma Thomas"}, "Salary": {"N": "13000"}, "Department": {"S": "IT"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1014"}, "Name": {"S": "James Harris"}, "Salary": {"N": "14000"}, "Department": {"S": "HR"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1015"}, "Name": {"S": "Olivia Clark"}, "Salary": {"N": "15000"}, "Department": {"S": "Finance"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1016"}, "Name": {"S": "William Lewis"}, "Salary": {"N": "16000"}, "Department": {"S": "Marketing"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1017"}, "Name": {"S": "Sophia Hall"}, "Salary": {"N": "17000"}, "Department": {"S": "IT"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1018"}, "Name": {"S": "Michael Allen"}, "Salary": {"N": "18000"}, "Department": {"S": "HR"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1019"}, "Name": {"S": "Isabella Young"}, "Salary": {"N": "19000"}, "Department": {"S": "Finance"}}}},
+        {"PutRequest": {"Item": {"EmployeeID": {"S": "E1020"}, "Name": {"S": "Daniel King"}, "Salary": {"N": "20000"}, "Department": {"S": "Marketing"}}}}
+    ]
+}
